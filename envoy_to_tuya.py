@@ -1,40 +1,35 @@
+import os
 import sys
 import requests
 import json
 import time
 import tinytuya
 
-# how to find 'deviceID's and 'local keys' of tuya devices >> youtube has answers
-# if devices are deleted and reinstalled on 'smart life' app, their local key chages, device ID not.
+# how find 'deviceID's and 'local keys' of tuya devices, youtube will help
 # find tuya device addresses and that of the 'envoy' with 'advanced IP scanner' or whatever
 # reserve their addresses in the router
-# connect to tuya devices - pytuya Method tinytuya (https://pypi.org/project/tinytuya)
-#                                                  for how to load library and many more
-# tinytuya wizzard will display correct version (usually 3.3)
-# then acces them as below (I have 3 devices at respective fixed addresses):
-d105 = tinytuya.OutletDevice('{device ID 1}', '192.168.1.105', '{local key 1}')
+# connect to tuya devices - pytuya Methodtinytuya (https://pypi.org/project/tinytuya)
+# for how to load library and many more
+# then acces them as below:
+d105 = tinytuya.OutletDevice('device ID 1', 'local ip 1', 'local key 1')
 d105.set_version(3.3)
-d123 = tinytuya.OutletDevice('{device ID 2}', '192.168.1.123', '{local key 2}')
+d123 = tinytuya.OutletDevice('device ID 2', 'local ip 2', 'local key 2')
 d123.set_version(3.3)
-d124 = tinytuya.OutletDevice('{device ID 3}', '192.168.1.124', '{local key 3}')
+d124 = tinytuya.OutletDevice('device ID 3', 'local ip 3', 'local key 3')
 d124.set_version(3.3)
 
 # as tuya devices are initialising slowly, we shall allow a few cycles even if there is no answer
-# it could be this small program must be restarted till it can read all three devices, after first
-# correct read, usually runs further without hikkups
 eval105 = False
 eval123 = False
 eval124 = False
 # before going into an endless cycle, define address of envoy's data
-target_url = f'http://titch.tplinkdns.com:65333/production.json?details=1'
-
-# starting the endless cycle:
+target_url = f'http://xxx.tplinhdns.com:xxxxxx/production.json?details=1'
 while True:
     # Get Status of tuya devices
     data105 = d105.status()
-    data123 = d123.status() 
+    data123 = d123.status()
     data124 = d124.status()
-    # as tuya devices have the unpleasant behaviour to not answer immediately 
+    # as tuya devices have the unpleasant behaviour to not answer immediately
     # after a command, we'll ignore the wrong answer until we get a proper one
     try:
         data105_1 = data105["dps"]
@@ -55,9 +50,9 @@ while True:
     eval123 = data123_1["1"]
     eval124 = data124_1["1"]
     # just to see on screen on/off of respective switches
-    print("IP..105:", eval105,"   IP..123:", eval123,"   IP..124:", eval124)
+    print("IP..105:", eval105, "   IP..123:", eval123, "   IP..124:", eval124)
 
-    # loading production and net import/export (watts) data in realtime from 
+    # loading production and net import/export (watts) data in realtime from
     # 'envoy's local webpage (- minus) value at 'consumption' means net export
     result = requests.get(target_url)
     json_status = json.loads(result.text)
@@ -70,32 +65,64 @@ while True:
     print("photovoltaic production:", p_now, "W")
     print("net (+)import/(-)export:", i_now, "W")
 
-    # from this point downwards is specific to my home (numbers are watts):
-    # the time.sleep(x) command is because at my devices commands too close to 
-    # one another may temporarily interrupt connection with one or two off the devices
-   
+# power allocated to each radiator:
+    r1 = 800
+    r2 = 1300
+    r3 = 6000
 
-    if p_now < 1000:
+# calculate photovoltaic power available, regardless of radiators in use:
+    if eval123 == False and eval124 == False and eval105 == False:
+        disp_power = -i_now
+    elif eval123 == True and eval124 == False and eval105 == False:
+        disp_power = r1 - i_now
+    elif eval123 == False and eval124 == True and eval105 == False:
+        disp_power = r2 - i_now
+    elif eval123 == True and eval124 == True and eval105 == False:
+        disp_power = r1 + r2 - i_now
+    elif eval123 == False and eval124 == False and eval105 == True:
+        disp_power = r3 - i_now
+    elif eval123 == True and eval124 == True and eval105 == True:
+        disp_power = r1 + r3 - i_now
+    elif eval123 == False and eval124 == True and eval105 == True:
+        disp_power = r2 + r3 - i_now
+    elif eval123 == True and eval124 == True and eval105 == True:
+        disp_power = r1 + r2 + r3 - i_now
+    print("power at our disposal:  ", disp_power, "W")
+# 1 --- 0 0 0
+    if disp_power < r1-200:
         if eval123 == True:
             d123.turn_off()
             time.sleep(5)
-        if eval105 == True:
-            d105.turn_off()
-            time.sleep(5)
         if eval124 == True:
             d124.turn_off()
             time.sleep(5)
-    if p_now > 1000 and p_now < 2100 and i_now < -200:
+        if eval105 == True:
+            d105.turn_off()
+            time.sleep(5)
+# 2 --- 1 0 0
+    elif disp_power >= r1-200 and disp_power < r2-200:
         if eval123 == False:
             d123.turn_on()
             time.sleep(5)
-        if eval105 == True:
-            d105.turn_off()
-            time.sleep(5)
         if eval124 == True:
             d124.turn_off()
             time.sleep(5)
-    if p_now > 2100 and p_now < 6000 and i_now < -200:
+        if eval105 == True:
+            d105.turn_off()
+            time.sleep(5)
+# 3 --- 0 1 0
+    elif disp_power >= r2-200 and disp_power < r1+r2-200:
+        if eval123 == True:
+            d123.turn_off()
+            time.sleep(5)
+        if eval124 == False:
+            d124.turn_on()
+            time.sleep(5)
+        if eval105 == True:
+            d105.turn_off()
+            time.sleep(5)
+# 4 --- 1 1 0
+    elif disp_power >= r1+r2-200 and disp_power < r3-200:
         if eval123 == False:
             d123.turn_on()
             time.sleep(5)
@@ -105,7 +132,8 @@ while True:
         if eval105 == True:
             d105.turn_off()
             time.sleep(5)
-    if p_now > 6000 and p_now < 7000 and i_now < -200:
+# 5 --- 0 0 1
+    elif disp_power >= r3-200 and disp_power < r1+r3-200:
         if eval123 == True:
             d123.turn_off()
             time.sleep(5)
@@ -115,7 +143,8 @@ while True:
         if eval105 == False:
             d105.turn_on()
             time.sleep(5)
-    if p_now > 7000 and p_now < 8100 and i_now < -200:
+# 6 --- 1 0 1
+    elif disp_power >= r1+r3-200 and disp_power < r2+r3-200:
         if eval123 == False:
             d123.turn_on()
             time.sleep(5)
@@ -125,7 +154,19 @@ while True:
         if eval105 == False:
             d105.turn_on()
             time.sleep(5)
-    if p_now > 8100 and i_now < -200:
+# 7 --- 0 1 1
+    elif disp_power >= r2+r3-200 and disp_power < r1+r2+r3-200:
+        if eval123 == True:
+            d123.turn_off()
+            time.sleep(5)
+        if eval124 == False:
+            d124.turn_on()
+            time.sleep(5)
+        if eval105 == False:
+            d105.turn_on()
+            time.sleep(5)
+# 8 --- 1 1 1
+    elif disp_power >= r1+r2+r3-200:
         if eval123 == False:
             d123.turn_on()
             time.sleep(5)
@@ -135,11 +176,6 @@ while True:
         if eval105 == False:
             d105.turn_on()
             time.sleep(5)
-
-
-    print("-------------------------------------------------")
-    # this is the frequency I decided for realtime readings
-    # (seconds in brackets till next cycle):
-    time.sleep(20)
-
-
+    print("--------------------------------------------------")
+    # seconds in brackets till next cycle:
+    time.sleep(30)
